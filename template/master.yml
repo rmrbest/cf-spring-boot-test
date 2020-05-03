@@ -1,0 +1,71 @@
+AWSTemplateFormatVersion: 2010-09-09
+Description: Master template that includes nested templates
+Parameters:
+  NatKeyName:
+    Description: Name of an existing EC2 KeyPair to enable SSH access to the NAT instances
+    Type: String
+    Default: nat
+  BastionHostKeyName:
+    Description: Keypair for Bastion Host instances
+    Type: String
+    Default: bastion
+  ApplicationHostKeyName:
+    Description: Keypair for Application Host instances
+    Type: String
+    Default: bastion
+  EnvName:
+    Description: Name of the environment to create
+    Type: String
+    Default: testing
+  DBUsername:
+    Description: User to connect database
+    Type: String
+    Default: root
+  DBPassword:
+    Description: Password to connect database
+    Type: String
+    Default: root1234
+  TemplateS3Bucket:
+    Description: Bucket to store nested templates
+    Type: String
+    Default: https://s3.amazonaws.com/rmrbest.test
+
+Resources:
+  NetworkingAndSecurityStack:
+    Type: 'AWS::CloudFormation::Stack'
+    Properties:
+      TemplateURL: !Join ["/", [ !Ref TemplateS3Bucket, "networking.yml"]]
+      Parameters:
+        NatKeyName: !Ref NatKeyName
+        BastionHostKeyName: !Ref BastionHostKeyName
+        EnvName: !Ref EnvName
+  DatabaseStack:
+    Type:  'AWS::CloudFormation::Stack'
+    Properties:
+      TemplateURL: !Join ["/", [ !Ref TemplateS3Bucket, "database.yml"]]
+      Parameters:
+        DBUsername: !Ref DBUsername
+        DBPassword: !Ref DBPassword
+        EnvName: !Ref EnvName
+    DependsOn: NetworkingAndSecurityStack
+  ApplicationStack:
+    Type:  'AWS::CloudFormation::Stack'
+    DependsOn: DatabaseStack
+    Properties:
+      TemplateURL: !Join ["/", [ !Ref TemplateS3Bucket, "application.yml"]]
+      Parameters:
+#        VpcId: !GetAtt [ NetworkingAndSecurityStack, Outputs.VpcId ]
+#        SubnetPriv1: !GetAtt [NetworkingAndSecurityStack, Outputs.SubnetPriv1 ]
+#        SubnetPriv2: !GetAtt [NetworkingAndSecurityStack, Outputs.SubnetPriv2 ]
+#        SubnetPriv3: !GetAtt [NetworkingAndSecurityStack, Outputs.SubnetPriv3 ]
+#        SubnetPub1: !GetAtt [NetworkingAndSecurityStack, Outputs.SubnetPub1 ]
+#        SubnetPub2: !GetAtt [NetworkingAndSecurityStack, Outputs.SubnetPub2 ]
+#        SubnetPub3: !GetAtt [NetworkingAndSecurityStack, Outputs.SubnetPub3 ]
+#        ApplicationSG: !GetAtt [NetworkingAndSecurityStack, Outputs.ApplicationSG]
+#        LoadBalancerSG: !GetAtt [NetworkingAndSecurityStack, Outputs.LoadBalancerSG]
+#        DBEndpoint: !GetAtt [DatabaseStack, Outputs.DBEndpoint]
+        KeyName: !Ref ApplicationHostKeyName
+        EnvName: !Ref EnvName
+        DBUsername: !Ref DBUsername
+        DBPassword: !Ref DBPassword
+

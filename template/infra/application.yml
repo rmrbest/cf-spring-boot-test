@@ -1,0 +1,450 @@
+AWSTemplateFormatVersion: 2010-09-09
+Description: Creates an autoscaling group with ELB instead ALB
+Parameters:
+  InstanceType:
+    Description: AppServer EC2 instance type
+    Type: String
+    Default: t2.micro
+    AllowedValues:
+      - t2.micro
+    ConstraintDescription: Must be a valid EC2 instance type.
+  KeyName:
+    Description: Name of an existing EC2 KeyPair to enable SSH access to the instances
+    Type: 'AWS::EC2::KeyPair::KeyName'
+    ConstraintDescription: must be the name of an existing EC2 KeyPair.
+  InstanceAvailabilityZones:
+    Description: 'A list of avilability zones in which instances will be launched. '
+    Type: CommaDelimitedList
+    Default: 'eu-west-1a,eu-west-1b,eu-west-1c'
+  ASGDesiredCapacity:
+    Description: The desired capacity for the Auto Scaling group
+    Default: '1'
+    Type: Number
+  ASGHealthCheckGracePeriod:
+    Description: >-
+      The length of time in seconds after a new EC2 instance comes into service
+      that Auto Scaling starts checking its health.
+    Default: '600'
+    Type: Number
+  ASGHealthCheckType:
+    Description: >-
+      The service you want the health status from, Amazon EC2 or Elastic Load
+      Balancer. Valid values are EC2 or ELB.
+    Default: ELB
+    Type: String
+    AllowedValues:
+      - ELB
+      - EC2
+  ASGMinSize:
+    Description: The minimum size of the Auto Scaling group.
+    Type: Number
+    Default: '1'
+  ASGMaxSize:
+    Description: The maximum size of the Auto Scaling group.
+    Type: Number
+    Default: '2'
+  InstanceAMI:
+    Description: AMI to use for instances.
+    Default: ami-062dbd29edfdac661
+    Type: String
+  EnvName:
+    Description: Instance Environment.
+    Default: testing
+    Type: String
+  DBUsername:
+    Description: Username for database connection
+    Type: String
+  DBPassword:
+    Description: Username for database connection
+    Type: String
+
+Resources:
+  SpringServerGroup:
+    Type: AWS::AutoScaling::AutoScalingGroup
+    CreationPolicy:
+      ResourceSignal:
+        Timeout: PT15M
+        Count: '2'
+    UpdatePolicy:
+      AutoScalingRollingUpdate:
+        MaxBatchSize: '1'
+        MinInstancesInService: '1'
+        PauseTime: PT15M
+        WaitOnResourceSignals: 'true'
+    Properties:
+      AvailabilityZones: !Ref InstanceAvailabilityZones
+      LaunchConfigurationName: !Ref 'LaunchConfig'
+      MinSize: '1'
+      MaxSize: '2'
+      LoadBalancerNames: [!Ref 'ElasticLoadBalancer']
+      VPCZoneIdentifier:
+        - Fn::ImportValue: !Sub "${EnvName}-SubnetPriv1"
+        - Fn::ImportValue: !Sub "${EnvName}-SubnetPriv2"
+        - Fn::ImportValue: !Sub "${EnvName}-SubnetPriv3"
+  LaunchConfig:
+    Type: AWS::AutoScaling::LaunchConfiguration
+    Metadata:
+      AWS::CloudFormation::Init:
+        configSets:
+          full_install: [install_cfn, install_logs, verify_instance_health]
+        install_cfn:
+          files:
+            /etc/cfn/cfn-hup.conf:
+              content: !Sub |
+                [main]
+                stack=${AWS::StackId}
+                region=${AWS::Region}
+              mode: '000400'
+              owner: root
+              group: root
+            /etc/cfn/hooks.d/cfn-auto-reloader.conf:
+              content: !Sub |
+                [cfn-auto-reloader-hook]
+                triggers=post.update
+                path=Resources.LaunchConfig.Metadata.AWS::CloudFormation::Init
+                action=/opt/aws/bin/cfn-init -v --stack ${AWS::StackName} --resource LaunchConfig --configsets full_install --region ${AWS::Region}
+                runas=root
+          services:
+            sysvinit:
+              cfn-hup:
+                enabled: 'true'
+                ensureRunning: 'true'
+                files: [/etc/cfn/cfn-hup.conf, /etc/cfn/hooks.d/cfn-auto-reloader.conf]
+      install_logs:
+        files:
+          "/etc/awslogs/awslogs.conf":
+            content:
+              Fn::Join:
+              - ''
+              - - "[general]\n"
+                - 'state_file= /var/awslogs/state/agent-state
+
+      '
+                - "[/var/log/messages]\n"
+                - 'file = /var/log/messages
+
+      '
+                - 'log_group_name = '
+                - Ref: CloudFormationLogs
+                - "\n"
+                - 'log_stream_name = {instance_id}/messages
+
+      '
+                - "datetime_format = \n"
+                - "[/var/log/wtmp]\n"
+                - 'file = /var/log/wtmp
+
+      '
+                - 'log_group_name = '
+                - Ref: CloudFormationLogs
+                - "\n"
+                - 'log_stream_name = {instance_id}/wtmp
+
+      '
+                - "datetime_format = \n"
+                - "[/var/log/cron]\n"
+                - 'file = /var/log/cron
+
+      '
+                - 'log_group_name = '
+                - Ref: CloudFormationLogs
+                - "\n"
+                - 'log_stream_name = {instance_id}/cron
+
+      '
+                - "datetime_format = \n"
+                - "[/var/log/boot.log]\n"
+                - 'file = /var/log/boot.log
+
+      '
+                - 'log_group_name = '
+                - Ref: CloudFormationLogs
+                - "\n"
+                - 'log_stream_name = {instance_id}/boot.log
+
+      '
+                - "datetime_format = \n"
+                - "[/var/log/secure]\n"
+                - 'file = /var/log/secure
+
+      '
+                - 'log_group_name = '
+                - Ref: CloudFormationLogs
+                - "\n"
+                - 'log_stream_name = {instance_id}/secure
+
+      '
+                - "datetime_format = \n"
+                - "[/var/log/yum.log]\n"
+                - 'file = /var/log/yum.log
+
+      '
+                - 'log_group_name = '
+                - Ref: CloudFormationLogs
+                - "\n"
+                - 'log_stream_name = {instance_id}/yum.log
+
+      '
+                - "datetime_format = \n"
+                - "[/var/log/cloud-init.log]\n"
+                - 'file = /var/log/cloud-init.log
+
+      '
+                - 'log_group_name = '
+                - Ref: CloudFormationLogs
+                - "\n"
+                - 'log_stream_name = {instance_id}/cloud-init.log
+
+      '
+                - "datetime_format = \n"
+                - "[/var/log/cloud-init-output.log]\n"
+                - 'file = /var/log/cloud-init-output.log
+
+      '
+                - 'log_group_name = '
+                - Ref: CloudFormationLogs
+                - "\n"
+                - 'log_stream_name = {instance_id}/cloud-init-output.log
+
+      '
+                - "datetime_format = \n"
+                - "[/var/log/cfn-init.log]\n"
+                - 'file = /var/log/cfn-init.log
+
+      '
+                - 'log_group_name = '
+                - Ref: CloudFormationLogs
+                - "\n"
+                - 'log_stream_name = {instance_id}/cfn-init.log
+
+      '
+                - "datetime_format = \n"
+                - "[/var/log/cfn-hup.log]\n"
+                - 'file = /var/log/cfn-hup.log
+
+      '
+                - 'log_group_name = '
+                - Ref: CloudFormationLogs
+                - "\n"
+                - 'log_stream_name = {instance_id}/cfn-hup.log
+
+      '
+                - "datetime_format = \n"
+                - "[/var/log/cfn-wire.log]\n"
+                - 'file = /var/log/cfn-wire.log
+
+      '
+                - 'log_group_name = '
+                - Ref: CloudFormationLogs
+                - "\n"
+                - 'log_stream_name = {instance_id}/cfn-wire.log
+
+      '
+                - "datetime_format = \n"
+                - "[/var/log/helloworld]\n"
+                - 'file = /var/log/helloworld
+
+      '
+                - 'log_group_name = '
+                - Ref: CloudFormationLogs
+                - "\n"
+                - 'log_stream_name = {instance_id}/helloworld
+
+      '
+                - "datetime_format = \n"
+            mode: '000444'
+            owner: root
+            group: root
+          "/etc/awslogs/awscli.conf":
+            content:
+              Fn::Join:
+              - ''
+              - - "[plugins]\n"
+                - 'cwlogs = cwlogs
+
+      '
+                - "[default]\n"
+                - 'region = '
+                - Ref: AWS::Region
+                - "\n"
+            mode: '000444'
+            owner: root
+            group: root
+          "/opt/report-custom-metrics.sh":
+            content:
+              Fn::Join:
+              - ''
+              - - "#!/bin/bash\n"
+                - "/opt/aws-scripts-mon/mon-put-instance-data.pl --mem-util --mem-used --mem-avail
+                  --swap-util --swap-used --disk-space-util --disk-space-used --disk-space-avail
+                  --memory-units=megabytes --disk-space-units=gigabytes --disk-path=/dev/xvda1
+                  --from-cron\n"
+            mode: '000744'
+            owner: root
+            group: root
+        commands:
+          01_create_state_directory:
+            command: mkdir -p /var/awslogs/state
+
+        verify_instance_health:
+          commands:
+            ELBHealthCheck:
+              command: !Sub
+                'until [ "$state" == "\"InService\"" ]; do state=$(aws --region ${AWS::Region} elb describe-instance-health
+                 --load-balancer-name ${ElasticLoadBalancer}
+                 --instances $(curl -s http://169.254.169.254/latest/meta-data/instance-id)
+                 --query InstanceStates[0].State); sleep 10; done'
+    Properties:
+      KeyName: !Ref 'KeyName'
+      ImageId: !Ref InstanceAMI
+      InstanceType: !Ref 'InstanceType'
+      SecurityGroups:
+        Fn::ImportValue: !Sub "${EnvName}-ApplicationSG"
+      IamInstanceProfile: !Ref 'WebServerInstanceProfile'
+      UserData:
+        Fn::Base64: !Sub |
+          #!/bin/bash
+          dbendpoint = ${DBEndpoint}
+          yum remove -y java-1.7.0-openjdk
+          yum install -y java-1.8.0-openjdk java-1.8.0-openjdk-devel git awslogs
+          service awslogs start
+          export JAVA_HOME=/usr/lib/jvm/java-1.8.0-openjdk
+          git clone https://github.com/scm-spain/devops-test-helloworld-app.git
+          sed -i "s/helloworld.database.lan/${dbendpoint}/g" /devops-test-helloworld-app/src/main/resources/application-pro.yml
+          sed -i "s/username: postgres/username: ${DBUsername}/g" /devops-test-helloworld-app/src/main/resources/application-pro.yml
+          sed -i "s/password: /password: ${DBPassword}/g" /devops-test-helloworld-app/src/main/resources/application-pro.yml
+          cd /devops-test-helloworld-app
+          sudo ./gradlew build
+          #sudo java -jar /devops-test-helloworld-app/build/libs/helloworld-0.0.1-SNAPSHOT.jar --spring.profiles.active=pro
+          yum install -y aws-cfn-bootstrap
+          /opt/aws/bin/cfn-init -v --stack ${AWS::StackId} --resource LaunchConfig --configsets full_install --region ${AWS::Region}
+          /opt/aws/bin/cfn-signal -e $? --stack ${AWS::StackId} --resource WebServerGroup --region ${AWS::Region}
+        - DBEndpoint:
+            Fn::ImportValue: !Sub "${EnvName}-DBEndpoint"
+  ElasticLoadBalancer:
+    Type: AWS::ElasticLoadBalancing::LoadBalancer
+    Properties:
+      CrossZone: 'true'
+      SecurityGroups:
+        Fn::ImportValue: !Sub "${EnvName}-LoadBalancerSG"
+      Subnets:
+        - Fn::ImportValue: !Sub "${EnvName}-SubnetPub1"
+        - Fn::ImportValue: !Sub "${EnvName}-SubnetPub2"
+        - Fn::ImportValue: !Sub "${EnvName}-SubnetPub3"
+      Listeners:
+      - LoadBalancerPort: '80'
+        InstancePort: '8000'
+        Protocol: HTTP
+      HealthCheck:
+        Target: TCP:8000
+        HealthyThreshold: '3'
+        UnhealthyThreshold: '5'
+        Interval: '300'
+        Timeout: '5'
+  WebServerInstanceProfile:
+    Type: AWS::IAM::InstanceProfile
+    Properties:
+      Path: /
+      Roles: [!Ref 'IAMRole']
+  IAMRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Statement:
+        - Effect: Allow
+          Principal:
+            Service: [ec2.amazonaws.com]
+          Action: ['sts:AssumeRole']
+      Path: /
+      Policies:
+      - PolicyName: describe-instance-health-policy
+        PolicyDocument:
+          Statement:
+          - Effect: Allow
+            Action: ['elasticloadbalancing:DescribeInstanceHealth']
+            Resource: '*'
+
+  CloudFormationLogs:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      RetentionInDays: 14
+
+  CloudWatchLogsPolicy:
+    Type: AWS::IAM::Policy
+    Properties:
+      PolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+        - Effect: Allow
+          Action:
+          - logs:CreateLogGroup
+          - logs:CreateLogStream
+          - logs:PutLogEvents
+          - logs:DescribeLogStreams
+          Resource:
+          - arn:aws:logs:*:*:*
+          - arn:aws:s3:::*
+      PolicyName: CWLogPolicy
+      Roles:
+      - Ref: IAMRole
+    DependsOn:
+    - IAMRole
+  AppServerScaleUpPolicy:
+    Type: 'AWS::AutoScaling::ScalingPolicy'
+    Properties:
+      AdjustmentType: ChangeInCapacity
+      AutoScalingGroupName: !Ref SpringServerGroup
+      Cooldown: '60'
+      ScalingAdjustment: '1'
+  AppServerScaleDownPolicy:
+    Type: 'AWS::AutoScaling::ScalingPolicy'
+    Properties:
+      AdjustmentType: ChangeInCapacity
+      AutoScalingGroupName: !Ref SpringServerGroup
+      Cooldown: '60'
+      ScalingAdjustment: '-1'
+  CPUAlarmHigh:
+    Type: 'AWS::CloudWatch::Alarm'
+    Properties:
+      AlarmDescription: Scale-up if CPU > 90% for 10 minutes
+      MetricName: CPUUtilization
+      Namespace: AWS/EC2
+      Statistic: Average
+      Period: '300'
+      EvaluationPeriods: '2'
+      Threshold: '90'
+      AlarmActions:
+        - !Ref AppServerScaleUpPolicy
+      Dimensions:
+        - Name: AutoScalingGroupName
+          Value: !Ref SpringServerGroup
+      ComparisonOperator: GreaterThanThreshold
+  CPUAlarmLow:
+    Type: 'AWS::CloudWatch::Alarm'
+    Properties:
+      AlarmDescription: Scale-down if CPU < 50% for 10 minutes
+      MetricName: CPUUtilization
+      Namespace: AWS/EC2
+      Statistic: Average
+      Period: '300'
+      EvaluationPeriods: '2'
+      Threshold: '50'
+      AlarmActions:
+        - !Ref AppServerScaleDownPolicy
+      Dimensions:
+        - Name: AutoScalingGroupName
+          Value: !Ref SpringServerGroup
+      ComparisonOperator: LessThanThreshold
+Outputs:
+  AutoScalingGroupName:
+    Value: !Ref SpringServerGroup
+    Description: AutoScaling Group Name.
+  ScaleUpAlarm:
+    Value: !Ref CPUAlarmHigh
+    Description: Scale Up Alarm
+  ScaleDownAlarm:
+    Value: !Ref CPUAlarmLow
+    Description: Scale Down Alarm
+  URL:
+    Description: URL of the website
+    Value: !Join ['', ['http://', !GetAtt [ElasticLoadBalancer, DNSName]]]
