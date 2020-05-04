@@ -1,0 +1,8 @@
+key_name: my-key
+s3_template_bucket_name: rmrbest.test
+db_username: root
+db_password: root1234
+environment: pre-production
+stack_name: api-users
+version: 1
+region: eu-west-1

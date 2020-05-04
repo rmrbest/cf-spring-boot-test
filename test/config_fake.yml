@@ -1,0 +1,8 @@
+key_name: my-key-fake
+s3_template_bucket_name: rmrbest.test.fake
+db_username: root
+db_password: 1234
+environment: test
+stack_name: test-app
+version: 1
+region: eu-west-1
