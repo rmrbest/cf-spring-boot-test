@@ -15,7 +15,7 @@ Currently multi region is not taken into account and the region where it is depl
 
 All instances used are of type t2.micro and no other instance type can be chosen. Also, availability zones, are hardcoded
 
-#Components
+# Components
 
 In the current infrastructure we have:
 
