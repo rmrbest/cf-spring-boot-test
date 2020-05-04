@@ -57,7 +57,10 @@ Parameters:
   DBPassword:
     Description: Username for database connection
     Type: String
-
+  Version:
+    Description: Version to cfprovision
+    Type: String
+    Default: '1'
 Resources:
   SpringServerGroup:
     Type: AWS::AutoScaling::AutoScalingGroup
@@ -69,7 +72,7 @@ Resources:
       AutoScalingRollingUpdate:
         MaxBatchSize: '1'
         MinInstancesInService: '1'
-        PauseTime: PT15M
+        PauseTime: PT10M
         WaitOnResourceSignals: 'true'
     Properties:
       AvailabilityZones: !Ref InstanceAvailabilityZones
@@ -299,34 +302,38 @@ Resources:
       ImageId: !Ref InstanceAMI
       InstanceType: !Ref 'InstanceType'
       SecurityGroups:
-        Fn::ImportValue: !Sub "${EnvName}-ApplicationSG"
+        - Fn::ImportValue: !Sub "${EnvName}-ApplicationSG"
       IamInstanceProfile: !Ref 'WebServerInstanceProfile'
       UserData:
-        Fn::Base64: !Sub |
-          #!/bin/bash
-          dbendpoint = ${DBEndpoint}
-          yum remove -y java-1.7.0-openjdk
-          yum install -y java-1.8.0-openjdk java-1.8.0-openjdk-devel git awslogs
-          service awslogs start
-          export JAVA_HOME=/usr/lib/jvm/java-1.8.0-openjdk
-          git clone https://github.com/scm-spain/devops-test-helloworld-app.git
-          sed -i "s/helloworld.database.lan/${dbendpoint}/g" /devops-test-helloworld-app/src/main/resources/application-pro.yml
-          sed -i "s/username: postgres/username: ${DBUsername}/g" /devops-test-helloworld-app/src/main/resources/application-pro.yml
-          sed -i "s/password: /password: ${DBPassword}/g" /devops-test-helloworld-app/src/main/resources/application-pro.yml
-          cd /devops-test-helloworld-app
-          sudo ./gradlew build
-          #sudo java -jar /devops-test-helloworld-app/build/libs/helloworld-0.0.1-SNAPSHOT.jar --spring.profiles.active=pro
-          yum install -y aws-cfn-bootstrap
-          /opt/aws/bin/cfn-init -v --stack ${AWS::StackId} --resource LaunchConfig --configsets full_install --region ${AWS::Region}
-          /opt/aws/bin/cfn-signal -e $? --stack ${AWS::StackId} --resource WebServerGroup --region ${AWS::Region}
-        - DBEndpoint:
-            Fn::ImportValue: !Sub "${EnvName}-DBEndpoint"
+        Fn::Base64:
+          Fn::Sub:
+          - |
+            #!/bin/bash
+            #Version ${Version}
+            yum remove -y java-1.7.0-openjdk
+            yum install -y java-1.8.0-openjdk java-1.8.0-openjdk-devel git awslogs
+            service awslogs start
+            export JAVA_HOME=/usr/lib/jvm/java-1.8.0-openjdk
+            git clone https://github.com/scm-spain/devops-test-helloworld-app.git
+            sed -i "s/helloworld.database.lan/${DBEndpoint}/g" /devops-test-helloworld-app/src/main/resources/application-pro.yml
+            sed -i "s/username: postgres/username: ${DBUsername}/g" /devops-test-helloworld-app/src/main/resources/application-pro.yml
+            sed -i "s/password: /password: ${DBPassword}/g" /devops-test-helloworld-app/src/main/resources/application-pro.yml
+            cd /devops-test-helloworld-app
+            sudo ./gradlew build
+            sudo java -jar /devops-test-helloworld-app/build/libs/helloworld-0.0.1-SNAPSHOT.jar --spring.profiles.active=pro
+            yum install -y aws-cfn-bootstrap
+            /opt/aws/bin/cfn-init -v --stack ${AWS::StackId} --resource LaunchConfig --configsets full_install --region ${AWS::Region}
+            /opt/aws/bin/cfn-signal -e $? --stack ${AWS::StackId} --resource WebServerGroup --region ${AWS::Region}
+          - DBEndpoint:
+               Fn::ImportValue:
+                  !Sub "${EnvName}-DBEndpoint"
+
   ElasticLoadBalancer:
     Type: AWS::ElasticLoadBalancing::LoadBalancer
     Properties:
       CrossZone: 'true'
       SecurityGroups:
-        Fn::ImportValue: !Sub "${EnvName}-LoadBalancerSG"
+        - Fn::ImportValue: !Sub "${EnvName}-LoadBalancerSG"
       Subnets:
         - Fn::ImportValue: !Sub "${EnvName}-SubnetPub1"
         - Fn::ImportValue: !Sub "${EnvName}-SubnetPub2"
