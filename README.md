@@ -91,6 +91,7 @@ python3 -m unittest test/cfprovisiontest.py
 * Use route53 to access rds
 * Use parameter store to save config
 * ALB as load balancer 
+* Multi AZ RDS
 
 
 # Questions
