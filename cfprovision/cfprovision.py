@@ -147,7 +147,6 @@ def _parse_parameters(parameters):
 @click.command()
 @click.option('--file', default='config.yaml')
 def deploy(file):
-    """Simple program that greets NAME for a total of COUNT times."""
     parse_config(file)
     update_templates()
     cloud_formation_execute()

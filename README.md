@@ -7,7 +7,7 @@ This repository provision a spring boot application in a scalable and fault-tole
 * `Python`: > 3
 * `An AWS account of course`
 * `A bucket in S3 and eu-west-1 region`
-* `Import a valid key to access via ssh in the host bastion`
+* `Import a valid key to access via ssh in the bastion host`
 
 
 # Limitations
